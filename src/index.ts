@@ -145,10 +145,19 @@ if (!GROWI_API_TOKEN) {
 const apiClient = axios.create({
   baseURL: GROWI_API_URL,
   headers: {
-    'Authorization': `Bearer ${GROWI_API_TOKEN}`,
     'Content-Type': 'application/json'
   }
 });
+
+const addAccessToken = (config: any) => {
+  if (!config.params) {
+    config.params = {};
+  }
+  config.params.access_token = GROWI_API_TOKEN;
+  return config;
+};
+
+apiClient.interceptors.request.use(addAccessToken);
 
 function isListPagesArgs(args: unknown): args is { 
   limit?: number;
