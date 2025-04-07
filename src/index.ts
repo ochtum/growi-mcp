@@ -438,16 +438,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         try {
           debugInfo += debugLog("TRYING UPDATE METHOD 1", { 
-            method: "Using page_id with original path",
-            page_id: originalPageId,
+            method: "Create new page with same path and overwrite flag",
             path: originalPath
           });
           
           const updateResponse = await apiClient.post('/_api/v3/page', {
-            page_id: originalPageId,
+            path: originalPath,
             body,
             grant: 1,
-            path: originalPath  // Include the original path to try to preserve it
+            overwrite: true  // Try to overwrite if it exists
           });
           
           debugInfo += debugLog("UPDATE RESPONSE (METHOD 1)", updateResponse.data);
@@ -455,25 +454,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           if (updateResponse.data && updateResponse.data.page) {
             const updatedPage = updateResponse.data.page;
             
-            if (updatedPage.path !== originalPath) {
+            if (updatedPage.path === originalPath) {
+              return {
+                content: [{ 
+                  type: "text", 
+                  text: `Page updated successfully:\nPath: ${updatedPage.path}\n\n${debugInfo}` 
+                }],
+                isError: false,
+              };
+            } else {
               debugInfo += debugLog("PATH CHANGED WARNING", {
                 originalPath,
                 newPath: updatedPage.path
               });
               
-              throw new Error("Path changed during update");
             }
-            
-            return {
-              content: [{ 
-                type: "text", 
-                text: `Page updated successfully:\nPath: ${updatedPage.path}\n\n${debugInfo}` 
-              }],
-              isError: false,
-            };
           }
           
-          throw new Error("Unexpected response format");
+          throw new Error("Method 1 failed or path changed");
         } catch (method1Error) {
           debugInfo += debugLog("METHOD 1 ERROR", {
             message: method1Error instanceof Error ? method1Error.message : String(method1Error),
@@ -482,15 +480,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           
           try {
             debugInfo += debugLog("TRYING UPDATE METHOD 2", {
-              method: "Create new page with same path and delete old one",
+              method: "Create new page with same path",
               originalPath
             });
             
             const createResponse = await apiClient.post('/_api/v3/page', {
               path: originalPath,
               body,
-              grant: 1,
-              overwrite: true  // Try to overwrite if it exists
+              grant: 1
             });
             
             debugInfo += debugLog("CREATE RESPONSE (METHOD 2)", createResponse.data);
@@ -511,10 +508,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   originalPath,
                   newPath: newPage.path
                 });
+                
               }
             }
             
-            throw new Error("Failed to update page with Method 2");
+            throw new Error("Method 2 failed or path changed");
           } catch (method2Error) {
             debugInfo += debugLog("METHOD 2 ERROR", {
               message: method2Error instanceof Error ? method2Error.message : String(method2Error),
@@ -523,18 +521,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             
             try {
               debugInfo += debugLog("TRYING UPDATE METHOD 3", {
-                method: "Create new page and rename to original path"
+                method: "Create temporary page and rename to original path"
               });
               
-              const createNewResponse = await apiClient.post('/_api/v3/page', {
+              const tempPath = `${originalPath}-temp-${Date.now()}`;
+              const createTempResponse = await apiClient.post('/_api/v3/page', {
+                path: tempPath,
                 body,
                 grant: 1
               });
               
-              debugInfo += debugLog("CREATE NEW RESPONSE (METHOD 3)", createNewResponse.data);
+              debugInfo += debugLog("CREATE TEMP RESPONSE (METHOD 3)", createTempResponse.data);
               
-              if (createNewResponse.data && createNewResponse.data.page) {
-                const tempPage = createNewResponse.data.page;
+              if (createTempResponse.data && createTempResponse.data.page) {
+                const tempPage = createTempResponse.data.page;
                 const tempPageId = tempPage._id;
                 
                 try {
@@ -552,13 +552,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   
                   debugInfo += debugLog("RENAME RESPONSE (METHOD 3)", renameResponse.data);
                   
-                  return {
-                    content: [{ 
-                      type: "text", 
-                      text: `Page updated successfully (Method 3):\nPath: ${originalPath}\n\n${debugInfo}` 
-                    }],
-                    isError: false,
-                  };
+                  if (renameResponse.data && renameResponse.data.page) {
+                    const renamedPage = renameResponse.data.page;
+                    
+                    if (renamedPage.path === originalPath) {
+                      return {
+                        content: [{ 
+                          type: "text", 
+                          text: `Page updated successfully (Method 3):\nPath: ${originalPath}\n\n${debugInfo}` 
+                        }],
+                        isError: false,
+                      };
+                    } else {
+                      debugInfo += debugLog("PATH CHANGED AFTER RENAME (METHOD 3)", {
+                        originalPath,
+                        newPath: renamedPage.path
+                      });
+                      
+                      return {
+                        content: [{ 
+                          type: "text", 
+                          text: `Page content updated but path changed:\nOriginal Path: ${originalPath}\nNew Path: ${renamedPage.path}\n\n${debugInfo}` 
+                        }],
+                        isError: false,
+                      };
+                    }
+                  }
+                  
+                  throw new Error("Rename failed with unexpected response format");
                 } catch (renameError) {
                   debugInfo += debugLog("RENAME ERROR (METHOD 3)", {
                     message: renameError instanceof Error ? renameError.message : String(renameError),
@@ -568,14 +589,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   return {
                     content: [{ 
                       type: "text", 
-                      text: `Page content updated but path changed:\nOriginal Path: ${originalPath}\nNew Path: ${tempPage.path}\n\n${debugInfo}` 
+                      text: `Page content updated but at a different path:\nOriginal Path: ${originalPath}\nNew Path: ${tempPage.path}\n\n${debugInfo}` 
                     }],
                     isError: false,
                   };
                 }
               }
               
-              throw new Error("Failed to create new page in Method 3");
+              throw new Error("Failed to create temporary page in Method 3");
             } catch (method3Error) {
               debugInfo += debugLog("METHOD 3 ERROR", {
                 message: method3Error instanceof Error ? method3Error.message : String(method3Error),
