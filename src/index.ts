@@ -247,18 +247,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       const limit = args.limit || 10;
-      const offset = args.offset || 0;
-      const path = args.path ? normalizePath(args.path) : undefined;
+      const path = args.path ? normalizePath(args.path) : '/';
       
       let debugInfo = "";
-      debugInfo += debugLog("LIST PAGES REQUEST", { limit, offset, path });
+      debugInfo += debugLog("LIST PAGES REQUEST", { limit, path });
       
       try {
         const response = await apiClient.get('/_api/v3/pages/list', {
           params: {
             limit,
-            offset,
-            path
+            path // Path is now always specified
           }
         });
         
