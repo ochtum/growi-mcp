@@ -434,16 +434,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         
         const pageId = getResponse.data.page._id;
+        const revisionId = getResponse.data.page.revision?._id;
         
         const response = await apiClient.post('/_api/v3/page', {
-          page_id: pageId,
-          body
+          body,
+          path,
+          pageId,          // Use pageId parameter (camelCase)
+          revisionId,      // Include revision ID for update
+          originPagePath: path, // Explicitly set the original path
+          grant: 1,        // Public page
+          overwrite: true  // Explicitly request overwrite instead of creating new page
         });
         
         debugInfo += debugLog("UPDATE PAGE RESPONSE", response.data);
         
         if (response.data && response.data.page) {
           const page = response.data.page;
+          
+          if (page.path !== path) {
+            debugInfo += debugLog("WARNING: PATH CHANGED", { 
+              originalPath: path, 
+              newPath: page.path 
+            });
+          }
           
           return {
             content: [{ 
@@ -467,13 +480,71 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           response: error instanceof Error && 'response' in error ? (error as any).response?.data : null
         });
         
-        return {
-          content: [{ 
-            type: "text", 
-            text: `Error updating page: ${error instanceof Error ? error.message : String(error)}\n\n${debugInfo}` 
-          }],
-          isError: true,
-        };
+        try {
+          debugInfo += debugLog("TRYING FALLBACK APPROACH", {});
+          
+          const getResponse = await apiClient.get('/_api/v3/page', {
+            params: { path }
+          });
+          
+          if (!getResponse.data || !getResponse.data.page) {
+            return {
+              content: [{ 
+                type: "text", 
+                text: `Page not found for path: ${path}\n\n${debugInfo}` 
+              }],
+              isError: true,
+            };
+          }
+          
+          const pageId = getResponse.data.page._id;
+          const revisionId = getResponse.data.page.revision?._id;
+          
+          const response = await apiClient.post('/_api/v3/page', {
+            body,
+            path,
+            page_id: pageId,  // Use page_id parameter (snake_case)
+            revision_id: revisionId, // Include revision ID for update
+            origin_path: path, // Try using origin_path
+            grant: 1,
+            overwrite: true  // Explicitly request overwrite instead of creating new page
+          });
+          
+          debugInfo += debugLog("FALLBACK UPDATE RESPONSE", response.data);
+          
+          if (response.data && response.data.page) {
+            const page = response.data.page;
+            
+            return {
+              content: [{ 
+                type: "text", 
+                text: `Page updated successfully (fallback method):\nPath: ${page.path}\n\n${debugInfo}` 
+              }],
+              isError: false,
+            };
+          } else {
+            return {
+              content: [{ 
+                type: "text", 
+                text: `Failed to update page with fallback method: Unexpected response format\n\n${debugInfo}` 
+              }],
+              isError: true,
+            };
+          }
+        } catch (fallbackError) {
+          debugInfo += debugLog("FALLBACK UPDATE ERROR", {
+            message: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            response: fallbackError instanceof Error && 'response' in fallbackError ? (fallbackError as any).response?.data : null
+          });
+          
+          return {
+            content: [{ 
+              type: "text", 
+              text: `Error updating page (both methods failed): ${error instanceof Error ? error.message : String(error)}\n\n${debugInfo}` 
+            }],
+            isError: true,
+          };
+        }
       }
     }
 
