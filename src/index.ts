@@ -245,7 +245,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       debugInfo += debugLog("LIST PAGES REQUEST", { limit, offset, path });
       
       try {
-        const response = await apiClient.get('/api/v3/pages/list', {
+        const response = await apiClient.get('/_api/v3/pages/list', {
           params: {
             limit,
             offset,
@@ -303,7 +303,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       debugInfo += debugLog("GET PAGE REQUEST", { path });
       
       try {
-        const response = await apiClient.get('/api/v3/page', {
+        const response = await apiClient.get('/_api/v3/page', {
           params: { path }
         });
         
@@ -355,7 +355,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       debugInfo += debugLog("CREATE PAGE REQUEST", { path, body: body.substring(0, 100) + (body.length > 100 ? '...' : '') });
       
       try {
-        const response = await apiClient.post('/api/v3/pages', {
+        const response = await apiClient.post('/_api/v3/pages', {
           path,
           body
         });
@@ -408,7 +408,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       debugInfo += debugLog("UPDATE PAGE REQUEST", { path, body: body.substring(0, 100) + (body.length > 100 ? '...' : '') });
       
       try {
-        const getResponse = await apiClient.get('/api/v3/page', {
+        const getResponse = await apiClient.get('/_api/v3/page', {
           params: { path }
         });
         
@@ -426,7 +426,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         const pageId = getResponse.data.page._id;
         
-        const response = await apiClient.post('/api/v3/pages/update', {
+        const response = await apiClient.post('/_api/v3/pages/update', {
           page_id: pageId,
           body
         });
@@ -480,7 +480,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       debugInfo += debugLog("SEARCH PAGES REQUEST", { q, limit, offset });
       
       try {
-        const response = await apiClient.get('/api/v3/search', {
+        const response = await apiClient.get('/_api/v3/search', {
           params: {
             q,
             limit,
