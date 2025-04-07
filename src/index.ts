@@ -433,134 +433,178 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
         
-        const pageId = getResponse.data.page._id;
-        const revisionId = getResponse.data.page.revision?._id;
-        
-        const response = await apiClient.post('/_api/v3/pages', {
-          path,
-          body,
-          grant: 1,        // Public page
-          grantUserGroupId: null,
-          overwrite: true  // Explicitly request overwrite instead of creating new page
-        });
-        
-        debugInfo += debugLog("UPDATE PAGE RESPONSE", response.data);
-        
-        if (response.data && response.data.page) {
-          const page = response.data.page;
-          
-          if (page.path !== path) {
-            debugInfo += debugLog("WARNING: PATH CHANGED", { 
-              originalPath: path, 
-              newPath: page.path 
-            });
-          }
-          
-          return {
-            content: [{ 
-              type: "text", 
-              text: `Page updated successfully:\nPath: ${page.path}\n\n${debugInfo}` 
-            }],
-            isError: false,
-          };
-        } else {
-          return {
-            content: [{ 
-              type: "text", 
-              text: `Failed to update page: Unexpected response format\n\n${debugInfo}` 
-            }],
-            isError: true,
-          };
-        }
-      } catch (error) {
-        debugInfo += debugLog("UPDATE PAGE ERROR", {
-          message: error instanceof Error ? error.message : String(error),
-          response: error instanceof Error && 'response' in error ? (error as any).response?.data : null
-        });
+        const originalPageId = getResponse.data.page._id;
+        const originalPath = path;
         
         try {
-          debugInfo += debugLog("TRYING FALLBACK APPROACH", {});
-          
-          const response = await apiClient.post('/_api/v3/page', {
-            body,
-            path,
-            grant: 1,
-            grantUserGroupId: null,
-            overwrite: true  // This is the key parameter to update instead of create
+          debugInfo += debugLog("TRYING UPDATE METHOD 1", { 
+            method: "Using page_id with original path",
+            page_id: originalPageId,
+            path: originalPath
           });
           
-          debugInfo += debugLog("FALLBACK UPDATE RESPONSE", response.data);
+          const updateResponse = await apiClient.post('/_api/v3/page', {
+            page_id: originalPageId,
+            body,
+            grant: 1,
+            path: originalPath  // Include the original path to try to preserve it
+          });
           
-          if (response.data && response.data.page) {
-            const page = response.data.page;
+          debugInfo += debugLog("UPDATE RESPONSE (METHOD 1)", updateResponse.data);
+          
+          if (updateResponse.data && updateResponse.data.page) {
+            const updatedPage = updateResponse.data.page;
+            
+            if (updatedPage.path !== originalPath) {
+              debugInfo += debugLog("PATH CHANGED WARNING", {
+                originalPath,
+                newPath: updatedPage.path
+              });
+              
+              throw new Error("Path changed during update");
+            }
             
             return {
               content: [{ 
                 type: "text", 
-                text: `Page updated successfully (fallback method):\nPath: ${page.path}\n\n${debugInfo}` 
+                text: `Page updated successfully:\nPath: ${updatedPage.path}\n\n${debugInfo}` 
               }],
               isError: false,
             };
-          } else {
-            return {
-              content: [{ 
-                type: "text", 
-                text: `Failed to update page with fallback method: Unexpected response format\n\n${debugInfo}` 
-              }],
-              isError: true,
-            };
           }
-        } catch (fallbackError) {
-          debugInfo += debugLog("FALLBACK UPDATE ERROR", {
-            message: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-            response: fallbackError instanceof Error && 'response' in fallbackError ? (fallbackError as any).response?.data : null
+          
+          throw new Error("Unexpected response format");
+        } catch (method1Error) {
+          debugInfo += debugLog("METHOD 1 ERROR", {
+            message: method1Error instanceof Error ? method1Error.message : String(method1Error),
+            response: method1Error instanceof Error && 'response' in method1Error ? (method1Error as any).response?.data : null
           });
           
           try {
-            debugInfo += debugLog("TRYING FINAL APPROACH", {});
-            
-            const finalResponse = await apiClient.post('/_api/v3/pages', {
-              path,
-              body,
-              grant: 1
+            debugInfo += debugLog("TRYING UPDATE METHOD 2", {
+              method: "Create new page with same path and delete old one",
+              originalPath
             });
             
-            debugInfo += debugLog("FINAL UPDATE RESPONSE", finalResponse.data);
+            const createResponse = await apiClient.post('/_api/v3/page', {
+              path: originalPath,
+              body,
+              grant: 1,
+              overwrite: true  // Try to overwrite if it exists
+            });
             
-            if (finalResponse.data && finalResponse.data.page) {
-              const page = finalResponse.data.page;
+            debugInfo += debugLog("CREATE RESPONSE (METHOD 2)", createResponse.data);
+            
+            if (createResponse.data && createResponse.data.page) {
+              const newPage = createResponse.data.page;
+              
+              if (newPage.path === originalPath) {
+                return {
+                  content: [{ 
+                    type: "text", 
+                    text: `Page updated successfully (Method 2):\nPath: ${newPage.path}\n\n${debugInfo}` 
+                  }],
+                  isError: false,
+                };
+              } else {
+                debugInfo += debugLog("PATH CHANGED (METHOD 2)", {
+                  originalPath,
+                  newPath: newPage.path
+                });
+              }
+            }
+            
+            throw new Error("Failed to update page with Method 2");
+          } catch (method2Error) {
+            debugInfo += debugLog("METHOD 2 ERROR", {
+              message: method2Error instanceof Error ? method2Error.message : String(method2Error),
+              response: method2Error instanceof Error && 'response' in method2Error ? (method2Error as any).response?.data : null
+            });
+            
+            try {
+              debugInfo += debugLog("TRYING UPDATE METHOD 3", {
+                method: "Create new page and rename to original path"
+              });
+              
+              const createNewResponse = await apiClient.post('/_api/v3/page', {
+                body,
+                grant: 1
+              });
+              
+              debugInfo += debugLog("CREATE NEW RESPONSE (METHOD 3)", createNewResponse.data);
+              
+              if (createNewResponse.data && createNewResponse.data.page) {
+                const tempPage = createNewResponse.data.page;
+                const tempPageId = tempPage._id;
+                
+                try {
+                  debugInfo += debugLog("TRYING RENAME (METHOD 3)", {
+                    tempPageId,
+                    originalPath
+                  });
+                  
+                  const renameResponse = await apiClient.post('/_api/v3/page', {
+                    page_id: tempPageId,
+                    path: originalPath,
+                    body,
+                    grant: 1
+                  });
+                  
+                  debugInfo += debugLog("RENAME RESPONSE (METHOD 3)", renameResponse.data);
+                  
+                  return {
+                    content: [{ 
+                      type: "text", 
+                      text: `Page updated successfully (Method 3):\nPath: ${originalPath}\n\n${debugInfo}` 
+                    }],
+                    isError: false,
+                  };
+                } catch (renameError) {
+                  debugInfo += debugLog("RENAME ERROR (METHOD 3)", {
+                    message: renameError instanceof Error ? renameError.message : String(renameError),
+                    response: renameError instanceof Error && 'response' in renameError ? (renameError as any).response?.data : null
+                  });
+                  
+                  return {
+                    content: [{ 
+                      type: "text", 
+                      text: `Page content updated but path changed:\nOriginal Path: ${originalPath}\nNew Path: ${tempPage.path}\n\n${debugInfo}` 
+                    }],
+                    isError: false,
+                  };
+                }
+              }
+              
+              throw new Error("Failed to create new page in Method 3");
+            } catch (method3Error) {
+              debugInfo += debugLog("METHOD 3 ERROR", {
+                message: method3Error instanceof Error ? method3Error.message : String(method3Error),
+                response: method3Error instanceof Error && 'response' in method3Error ? (method3Error as any).response?.data : null
+              });
               
               return {
                 content: [{ 
                   type: "text", 
-                  text: `Page updated successfully (final method):\nPath: ${page.path}\n\n${debugInfo}` 
-                }],
-                isError: false,
-              };
-            } else {
-              return {
-                content: [{ 
-                  type: "text", 
-                  text: `Failed to update page with final method: Unexpected response format\n\n${debugInfo}` 
+                  text: `Error updating page (all methods failed): ${method3Error instanceof Error ? method3Error.message : String(method3Error)}\n\n${debugInfo}` 
                 }],
                 isError: true,
               };
             }
-          } catch (finalError) {
-            debugInfo += debugLog("FINAL UPDATE ERROR", {
-              message: finalError instanceof Error ? finalError.message : String(finalError),
-              response: finalError instanceof Error && 'response' in finalError ? (finalError as any).response?.data : null
-            });
-            
-            return {
-              content: [{ 
-                type: "text", 
-                text: `Error updating page (all methods failed): ${error instanceof Error ? error.message : String(error)}\n\n${debugInfo}` 
-              }],
-              isError: true,
-            };
           }
         }
+      } catch (error) {
+        debugInfo += debugLog("INITIAL ERROR", {
+          message: error instanceof Error ? error.message : String(error),
+          response: error instanceof Error && 'response' in error ? (error as any).response?.data : null
+        });
+        
+        return {
+          content: [{ 
+            type: "text", 
+            text: `Error updating page: ${error instanceof Error ? error.message : String(error)}\n\n${debugInfo}` 
+          }],
+          isError: true,
+        };
       }
     }
 
