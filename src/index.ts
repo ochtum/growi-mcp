@@ -364,7 +364,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       debugInfo += debugLog("CREATE PAGE REQUEST", { path, body: body.substring(0, 100) + (body.length > 100 ? '...' : '') });
       
       try {
-        const response = await apiClient.post('/_api/v3/page/create', {
+        const response = await apiClient.post('/_api/v3/page', {
           path,
           body
         });
@@ -435,7 +435,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         const pageId = getResponse.data.page._id;
         
-        const response = await apiClient.post('/_api/v3/page/update', {
+        const response = await apiClient.post('/_api/v3/page', {
           page_id: pageId,
           body
         });
