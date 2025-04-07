@@ -436,13 +436,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const pageId = getResponse.data.page._id;
         const revisionId = getResponse.data.page.revision?._id;
         
-        const response = await apiClient.post('/_api/v3/page', {
-          body,
+        const response = await apiClient.post('/_api/v3/pages', {
           path,
-          pageId,          // Use pageId parameter (camelCase)
-          revisionId,      // Include revision ID for update
-          originPagePath: path, // Explicitly set the original path
+          body,
           grant: 1,        // Public page
+          grantUserGroupId: null,
           overwrite: true  // Explicitly request overwrite instead of creating new page
         });
         
@@ -483,31 +481,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           debugInfo += debugLog("TRYING FALLBACK APPROACH", {});
           
-          const getResponse = await apiClient.get('/_api/v3/page', {
-            params: { path }
-          });
-          
-          if (!getResponse.data || !getResponse.data.page) {
-            return {
-              content: [{ 
-                type: "text", 
-                text: `Page not found for path: ${path}\n\n${debugInfo}` 
-              }],
-              isError: true,
-            };
-          }
-          
-          const pageId = getResponse.data.page._id;
-          const revisionId = getResponse.data.page.revision?._id;
-          
           const response = await apiClient.post('/_api/v3/page', {
             body,
             path,
-            page_id: pageId,  // Use page_id parameter (snake_case)
-            revision_id: revisionId, // Include revision ID for update
-            origin_path: path, // Try using origin_path
             grant: 1,
-            overwrite: true  // Explicitly request overwrite instead of creating new page
+            grantUserGroupId: null,
+            overwrite: true  // This is the key parameter to update instead of create
           });
           
           debugInfo += debugLog("FALLBACK UPDATE RESPONSE", response.data);
@@ -537,13 +516,50 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             response: fallbackError instanceof Error && 'response' in fallbackError ? (fallbackError as any).response?.data : null
           });
           
-          return {
-            content: [{ 
-              type: "text", 
-              text: `Error updating page (both methods failed): ${error instanceof Error ? error.message : String(error)}\n\n${debugInfo}` 
-            }],
-            isError: true,
-          };
+          try {
+            debugInfo += debugLog("TRYING FINAL APPROACH", {});
+            
+            const finalResponse = await apiClient.post('/_api/v3/pages', {
+              path,
+              body,
+              grant: 1
+            });
+            
+            debugInfo += debugLog("FINAL UPDATE RESPONSE", finalResponse.data);
+            
+            if (finalResponse.data && finalResponse.data.page) {
+              const page = finalResponse.data.page;
+              
+              return {
+                content: [{ 
+                  type: "text", 
+                  text: `Page updated successfully (final method):\nPath: ${page.path}\n\n${debugInfo}` 
+                }],
+                isError: false,
+              };
+            } else {
+              return {
+                content: [{ 
+                  type: "text", 
+                  text: `Failed to update page with final method: Unexpected response format\n\n${debugInfo}` 
+                }],
+                isError: true,
+              };
+            }
+          } catch (finalError) {
+            debugInfo += debugLog("FINAL UPDATE ERROR", {
+              message: finalError instanceof Error ? finalError.message : String(finalError),
+              response: finalError instanceof Error && 'response' in finalError ? (finalError as any).response?.data : null
+            });
+            
+            return {
+              content: [{ 
+                type: "text", 
+                text: `Error updating page (all methods failed): ${error instanceof Error ? error.message : String(error)}\n\n${debugInfo}` 
+              }],
+              isError: true,
+            };
+          }
         }
       }
     }
