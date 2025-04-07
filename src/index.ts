@@ -651,16 +651,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         debugInfo += debugLog("SEARCH PAGES RESPONSE", response.data);
         
+        let searchResults = null;
+        
         if (response.data && response.data.pages) {
-          const pages = response.data.pages;
-          const pageList = pages.map((page: any) => 
-            `- ${page.path}${page.pageTitles ? `\n  Title: ${page.pageTitles}` : ''}`
-          ).join('\n\n');
+          searchResults = response.data.pages;
+        } else if (response.data && response.data.props && response.data.props.pageProps) {
+          const pageProps = response.data.props.pageProps;
+          
+          if (pageProps.dehydratedState && pageProps.dehydratedState.queries) {
+            const queries = pageProps.dehydratedState.queries;
+            
+            for (const query of queries) {
+              if (query.state && query.state.data) {
+                const data = query.state.data;
+                
+                if (data.pages || (data.hits && data.hits.length > 0)) {
+                  searchResults = data.pages || data.hits;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (!searchResults && pageProps.searchResults) {
+            searchResults = pageProps.searchResults;
+          }
+        }
+        
+        if (searchResults && Array.isArray(searchResults)) {
+          const pageList = searchResults.map((page: any) => {
+            const path = page.path || (page.data && page.data.path) || '';
+            const title = page.title || page.pageTitles || (page.data && page.data.title) || '';
+            
+            return `- ${path}${title ? `\n  Title: ${title}` : ''}`;
+          }).join('\n\n');
           
           return {
             content: [{ 
               type: "text", 
-              text: pages.length > 0 ? pageList : `No pages found matching "${q}"` 
+              text: searchResults.length > 0 ? pageList : `No pages found matching "${q}"` 
             }],
             isError: false,
           };
