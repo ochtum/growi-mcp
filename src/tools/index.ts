@@ -1,21 +1,26 @@
-import { ALL_TOOLS } from './definitions.js';
-import { handleListPages } from './list-pages.js';
-import { handleGetPage } from './get-page.js';
-import { handleCreatePage } from './create-page.js';
-import { handleUpdatePage } from './update-page.js';
-import { handleSearchPages } from './search-pages.js';
-import { ApiClient } from '../api/index.js';
-import { 
-  isListPagesArgs, 
-  isGetPageArgs, 
-  isCreatePageArgs, 
-  isUpdatePageArgs, 
-  isSearchPagesArgs 
-} from '../utils/index.js';
+import { ALL_TOOLS } from "./definitions.js";
+import { handleListPages } from "./list-pages.js";
+import { handleGetPage } from "./get-page.js";
+import { handleCreatePage } from "./create-page.js";
+import { handleUpdatePage } from "./update-page.js";
+import { handleSearchPages } from "./search-pages.js";
+import { ApiClient } from "../api/index.js";
+import {
+  isListPagesArgs,
+  isGetPageArgs,
+  isCreatePageArgs,
+  isUpdatePageArgs,
+  isSearchPagesArgs,
+} from "../utils/index.js";
 
+export type ToolName = (typeof ALL_TOOLS)[number]["name"];
 export { ALL_TOOLS };
 
-export async function handleToolCall(apiClient: ApiClient, name: string, args: any) {
+export async function handleToolCall(
+  apiClient: ApiClient,
+  name: ToolName,
+  args: unknown
+) {
   try {
     if (!args) {
       throw new Error("No arguments provided");
@@ -65,7 +70,9 @@ export async function handleToolCall(apiClient: ApiClient, name: string, args: a
       content: [
         {
           type: "text",
-          text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+          text: `Error: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         },
       ],
       isError: true,
